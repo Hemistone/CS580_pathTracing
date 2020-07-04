@@ -80,12 +80,13 @@ float Polygon::TriangularSampling(Point& p, float s, float t, int Type = 0)
 	// You can ignore the type parameter. 
 	// Return value is the pdf for the p. 
 
-	float x = (P[0].x() + P[1].x() + P[2].x()) / 3.0f;
-	float y = (P[0].y() + P[1].y() + P[2].y()) / 3.0f;
-	float z = (P[0].z() + P[1].z() + P[2].z()) / 3.0f;
+	Vector p0_p1 = P[1] - P[0];
+	Vector p0_p2 = P[2] - P[0];
 
-	p = Point(x, y, z);
-	float pdf = 1.0;
+	// According to lectureNote15 page 30,
+	// and page 18 of - Triangluar Sampling of  ¡°Monte Carlo Techniques for Direct Lighting Calculations, ¡± ACM Transactions on Graphics, 1996
+	p = P[0] + p0_p1 * (t*sqrt(1 - s)) + p0_p2 * (1 - sqrt(1 - s));
+	float pdf = 2.0 / (p0_p1*p0_p2).norm();
 	return pdf;
 }
 
@@ -101,12 +102,12 @@ float Polygon::RectangularSampling(Point& p, float s, float t, int Type = 0)
 	// You can ignore the type parameter. 
 	// Return value is the pdf for the p.
 
-	float x = (P[0].x() + P[1].x() + P[2].x() + P[3].x()) / 4.0f;
-	float y = (P[0].y() + P[1].y() + P[2].y() + P[3].y()) / 4.0f;
-	float z = (P[0].z() + P[1].z() + P[2].z() + P[3].z()) / 4.0f;
+	Vector p0_p1 = P[1] - P[0];
+	Vector p0_p3 = P[3] - P[0];
 
-	p = Point(x, y, z);
-	float pdf = 1;
+	p = P[0] + p0_p1 * s + p0_p3 * t;
+
+	float pdf = 1.0 / (p0_p1*p0_p3).norm();
 	return pdf;
 }
 
@@ -122,8 +123,36 @@ bool Sphere::sample(Point& p, float& probability, const Point& from, float s, fl
 	// from is the intersection point of a ray with an intersection object. 
 	// *Reference: Section 3.2 ¡®Sampling Spherical Luminaries¡¯ in ¡°Monte Carlo Techniques for Direct Lighting Calculations,¡± ACM Transactions on Graphics, 1996
 
-	probability = 1;
-	p = (*this).Centre;
+	float distance = ((*this).Centre - from).norm();
+	float tmp = ((*this).Radius / distance)*((*this).Radius / distance);
+	double theta = acos(1 - s + t * sqrt(1 - tmp));
+	double phi = 2 * (float)PI* t;
+	Vector normHat = Vector(0, 1, 0);
+	Vector wHat = normal(from).invert();
+	Vector vHat = (wHat*normHat).normalised();
+	Vector uHat = (vHat*wHat).normalised();
+	double fx = cos(phi)*sin(theta);
+	double fy = sin(phi)*sin(theta);
+	double fz = cos(theta);
+
+	Ray samplingRay;
+	samplingRay.origin() = from;
+	samplingRay.direction() = Vector(uHat.x()*fx + vHat.x()*fy + wHat.x()*fz, uHat.y()*fx + vHat.y()*fy + wHat.y()*fz, uHat.z()*fx + vHat.z()*fy + wHat.z()*fz);
+
+	float factor;
+	Colour color;
+	(*this).intersect(samplingRay, factor, color);
+	p = samplingRay.pointAt(factor);
+	//std::cout << "samplingRay: " << samplingRay << "\n";
+	//std::cout << "p: " << p << "\n";
+	//std::cout << "From: " << from << "\n";
+	//std::cout << "s and t : " << s << ", "<< t << "\n";
+
+	Vector normSphere = normal(p);
+	probability = (samplingRay.direction().invert() ^ normSphere) / (2 * (float)PI*factor*factor*(1 - sqrt(1 - tmp)));
+
+	//probability = 1;
+	//p = (*this).Centre;
 
 	return true;
 }
@@ -149,7 +178,20 @@ Colour phongBRDF::brdf(
 	// A parameter s is the random variable in the range between 0 and 1. 
 	// We use s in order to determine which term is employed from diffuse and specular BRDF.
 
-	return m_kd / (float)PI;
+	Colour diffuse = m_kd / (float)PI;
+
+	Vector _in = in.normalised();
+	Vector _out = out.normalised();
+	Vector _Nx = Nx.normalised();
+	Vector reflect = _Nx * (-2 * (_in ^ _Nx)) + _in;
+	float cosAlpha = reflect.normalised() ^ _out;
+	if (cosAlpha < 0.0f)
+		cosAlpha = 0.0f;
+
+	//specular term of modified phong brdf
+	Colour specular = m_ks * ((s + 2) / (2.0*PI)) * pow(cosAlpha, s);
+
+	return (diffuse + specular);
 }
 
 
@@ -211,7 +253,6 @@ Ray phongBRDF::reflection(const Ray& incoming,	// incoming ray
 		//==================================================
 		//TASK5
 		//Specular part
-
 	}
 
 	pdf = 0;
@@ -270,34 +311,40 @@ Colour LitScene::tracePath(const Ray& ray, GObject* object, Colour weightIn, int
 
 	if (m_areaLightCount > 0) //If there is light source
 	{
-		//std::cout << "m_areaLightCount: " << m_areaLightCount << "\n";
-		int theLight = int(frand() * m_areaLightCount);  // choose an emitter randomly
+		//m_areaLightCount = 1 for all examples in this project
+		int lightIdx = int(frand() * m_areaLightCount);  // select light source k
 
-		Point lightPoint;
+		Point lightSamplingPoint;
 		float pdf;
 
-		if (areaLightAt(theLight)->sample(lightPoint, pdf, ixp, Lamda1, Lamda2))
+		if (areaLightAt(lightIdx)->sample(lightSamplingPoint, pdf, ixp, Lamda1, Lamda2))
 		{
-			// generate ray in sampled direction
+			// ray in sampled direction
 			Ray lightray;
 			lightray.origin() = ixp;
-			lightray.direction() = lightPoint - ixp;
+			lightray.direction() = (lightSamplingPoint - ixp).normalised();
 
-			float ndotl = (normal ^ lightray.direction().normalised()); // dot product of normalised direction of light and surface
-			if (ndotl > 0.0f) // If surface normal is same face as the light(if spotted positive face of surface)
+			float ndotl_surface = (normal ^ lightray.direction()); // dot product of normalised direction of light and surface
+			if (ndotl_surface > 0.0f) // If surface normal is same face as the light(if spotted positive face of surface)
 			{
 				Point intersectPoint;
 				Vector normLight;
-				if ((areaLightAt(theLight) == intersect(lightray, intersectPoint, normLight)))
+				if ((areaLightAt(lightIdx) == intersect(lightray, intersectPoint, normLight)))
 				{
-					float distance;
-					float ndotlLight = lightray.direction().invert().normalised(distance) ^ normLight;
-					if (ndotlLight > 0)
+					float distance = (lightSamplingPoint - ixp).norm();
+					float ndotl_light = lightray.direction().invert() ^ normLight;
+					if (ndotl_light > 0)
 					{
-						Colour brdf = hitObject->brdf()->brdf(ixp, ray.direction(), lightray.direction(), normal, hitObject->material().shininess());
+						float s = hitObject->material().shininess();
+						Colour brdf = hitObject->brdf()->brdf(ixp, ray.direction(), lightray.direction(), normal, s);
 						// Trace ray to emitter
-						//std::cout << "areaLight: " << areaLightAt(theLight)->material().emission() << "\n";
-						colorAdd = brdf * ndotl / pdf * (areaLightAt(theLight)->material().emission()*(ndotlLight / (distance*distance)));
+						Colour weightOut = (weightIn*brdf*ndotl_surface*(ndotl_light / (pdf*distance*distance)));
+						//colorAdd = tracePath(lightray, hitObject, weightOut, depth + 1);
+						//std::cout << "areaLight: " << areaLightAt(lightIdx)->material().emission() << "\n";
+						if ((brdf.sum()*ndotl_surface*(1.0f / pdf)) > 3.0f) // If is over white(R+G+B>=3)
+							colorAdd = (areaLightAt(lightIdx)->material().emission())*(ndotl_light / (distance*distance));
+						else
+							colorAdd = (areaLightAt(lightIdx)->material().emission()) * brdf * ndotl_surface *ndotl_light / (pdf*distance*distance);
 					}
 				}
 			}

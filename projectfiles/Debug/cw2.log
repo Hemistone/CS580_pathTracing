@@ -6,6 +6,10 @@ c:\cs580\hw3_pathtracing_2020\homework\yourcode.cpp(53): warning C4244: 'initial
 c:\cs580\hw3_pathtracing_2020\homework\yourcode.cpp(57): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
 c:\cs580\hw3_pathtracing_2020\homework\yourcode.cpp(58): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
 c:\cs580\hw3_pathtracing_2020\homework\yourcode.cpp(63): warning C4244: 'argument': conversion from 'int' to 'float', possible loss of data
+c:\cs580\hw3_pathtracing_2020\homework\yourcode.cpp(89): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+c:\cs580\hw3_pathtracing_2020\homework\yourcode.cpp(110): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+c:\cs580\hw3_pathtracing_2020\homework\yourcode.cpp(140): warning C4244: 'argument': conversion from 'double' to 'float', possible loss of data
+c:\cs580\hw3_pathtracing_2020\homework\yourcode.cpp(192): warning C4244: 'argument': conversion from 'double' to 'float', possible loss of data
 brdf.obj : warning LNK4075: ignoring '/EDITANDCONTINUE' due to '/INCREMENTAL:NO' specification
   cw2.vcxproj -> C:\CS580\hw3_pathtracing_2020\homework\projectfiles\Debug\pathtracer.exe
           1개 파일이 복사되었습니다.
